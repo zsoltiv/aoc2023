@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +6,10 @@
 #include <inttypes.h>
 
 #define ELEMS(x) (sizeof((x)) / sizeof((x)[0]))
+
+struct mapping {
+    char *word, num;
+};
 
 unsigned long process_line(char *data)
 {
@@ -18,82 +23,75 @@ unsigned long process_line(char *data)
     return strtoul(numstring, NULL, 10);
 }
 
-int lowest(uintptr_t *wordpositions, size_t npositions)
+struct mapping *first_mapping(const char *line, struct mapping *mappings, size_t nmappings, uintptr_t *outpos)
 {
-    int lowi = 0;
-    for(int i = 0; i < npositions; i++)
-        if((wordpositions[i] && wordpositions[i] < wordpositions[lowi]) || wordpositions[lowi] == 0) {
-            lowi = i;
+    int firsti = -1;
+    *outpos = UINTPTR_MAX;
+    for(int i = 0; i < nmappings; i++) {
+        uintptr_t pos = (uintptr_t)strstr(line, mappings[i].word);
+        if(pos && pos < (*outpos)) {
+            *outpos = pos;
+            firsti = i;
         }
-    printf("\t%d\n", lowi);
-    return lowi;
+    }
+
+    if(firsti < 0)
+        return NULL;
+    else
+        return &mappings[firsti];
 }
 
-int highest(uintptr_t *wordpositions, size_t npositions)
+struct mapping *last_mapping(const char *line, struct mapping *mappings, size_t nmappings, uintptr_t *outpos)
 {
-    int highi = 0;
-    for(int i = 0; i < npositions; i++)
-        if((wordpositions[i] && wordpositions[i] > wordpositions[highi]) || wordpositions[highi] == 0)
-            highi = i;
-    printf("\t%d\n", highi);
-    return highi;
-}
+    *outpos = 0;
+    for(const char *ptr = line + strlen(line); ptr != line; ptr--) {
+        for(int i = 0; i < nmappings; i++) {
+            uintptr_t pos = (uintptr_t)strstr(ptr, mappings[i].word);
+            if(pos) {
+                *outpos = pos;
+                return &mappings[i];
+            }
+        }
+    }
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+    return NULL;
+}
 
 unsigned long process_line2(char *data)
 {
-    static char *words[9] = {
-        "one",
-        "two",
-        "three",
-        "four",
-        "five",
-        "six",
-        "seven",
-        "eight",
-        "nine",
-    };
-    // TODO a legszelso occurence kell ezekbol is; lehet beloluk tobb egy sorban
-    static struct {
-        char *word, *num;
-    } word_nums[9] = {
-        {"one", "1"},
-        {"two", "2"},
-        {"three", "3"},
-        {"four", "4"},
-        {"five", "5"},
-        {"six", "6"},
-        {"seven", "7"},
-        {"eight", "8"},
-        {"nine", "9"},
+    static struct mapping word_nums[9] = {
+        {"one", '1'},
+        {"two", '2'},
+        {"three", '3'},
+        {"four", '4'},
+        {"five", '5'},
+        {"six", '6'},
+        {"seven", '7'},
+        {"eight", '8'},
+        {"nine", '9'},
     };
     uintptr_t wordptrs[9] = {0};
     char numstring[3] = {0};
-    puts(data);
     char *ptr;
-    for(int i = 0; i < ELEMS(wordptrs); i++) {
-        wordptrs[i] = (uintptr_t)strstr(data, words[i]);
-    }
-    for(ptr = data; !isdigit((*ptr)); ptr++);
-    int lowi = lowest(wordptrs, ELEMS(wordptrs));
-    uintptr_t lowestptr = wordptrs[lowi];
-    printf("\tlow %p %p\n", lowestptr, ptr);
-    if(lowestptr)
-        numstring[0] = lowestptr < ptr ? word_nums[lowi] : *ptr;
-    else
+    uintptr_t firstpos = 0, lastpos = 0;
+    for(ptr = data; *ptr && !isdigit((*ptr)); ptr++);
+    struct mapping *first = first_mapping(data, word_nums, ELEMS(word_nums), &firstpos);
+    if(first) {
+        if(firstpos < (uintptr_t)ptr) {
+            numstring[0] = first->num;
+        } else {
+            numstring[0] = *ptr;
+            first = NULL;
+            firstpos = 0;
+        }
+    } else
         numstring[0] = *ptr;
-    for(ptr = data + strlen(data); !isdigit((*ptr)); ptr--);
-    int highi = highest(wordptrs, ELEMS(wordptrs));
-    uintptr_t highestptr = wordptrs[highi];
-    printf("\thigh %p %p\n", highestptr, ptr);
-    if(highestptr)
-        numstring[1] = highestptr > ptr ? word_nums[highi] : *ptr;
-    else
-        numstring[0] = *ptr;
-
-    puts(numstring);
+    for(ptr = data + strlen(data) - 1; *ptr && !isdigit((*ptr)); ptr--);
+    struct mapping *last = last_mapping(data, word_nums, ELEMS(word_nums), &lastpos);
+    if(last && lastpos != firstpos) {
+        numstring[1] = lastpos > (uintptr_t)ptr ? last->num : *ptr;
+    } else
+        numstring[1] = *ptr;
 
     return strtoul(numstring, NULL, 10);
 }
@@ -112,8 +110,7 @@ int main(int argc, char **argv)
     fclose(f);
 
     char *line = strtok(data, "\n");
-    unsigned long sum = 0;
-    unsigned long sum2 = 0;
+    unsigned long sum = 0, sum2 = 0;
     do {
         sum += process_line(line);
         sum2 += process_line2(line);
